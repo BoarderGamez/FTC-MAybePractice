@@ -79,3 +79,5 @@ lint/generated/
 lint/outputs/
 lint/tmp/
 # lint/reports/
+DECODE_Competition_Manual_TU19.htm
+ai.md
