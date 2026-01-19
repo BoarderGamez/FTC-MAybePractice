@@ -39,8 +39,23 @@ public class _20252026 extends LinearOpMode {
   private VisionPortal visionPortal;
 
   private static final int TARGET_TAG_ID = 20;
-  private static final double AUTO_AIM_GAIN = 0.1;
-  private static final double AUTO_AIM_MAX_TURN = 0.8;
+  private static final double INCHES_TO_CM = 2.54;
+  
+  private static final double TARGET_DISTANCE_CM = 60.0;
+  private static final double TARGET_X_OFFSET_CM = 0.0;
+  private static final double TARGET_YAW = 0.0;
+  
+  private static final double DRIVE_GAIN = 0.015;
+  private static final double STRAFE_GAIN = 0.015;
+  private static final double TURN_GAIN = 0.02;
+  
+  private static final double MAX_DRIVE = 0.6;
+  private static final double MAX_STRAFE = 0.6;
+  private static final double MAX_TURN = 0.5;
+  
+  private static final double DISTANCE_TOLERANCE_CM = 5.0;
+  private static final double X_TOLERANCE_CM = 2.5;
+  private static final double YAW_TOLERANCE = 3.0;
 
   private boolean autoOn = true;
   private double gearbox = 0.4;
@@ -155,15 +170,17 @@ public class _20252026 extends LinearOpMode {
     }
 
     if (autoAimEnabled) {
-      double autoAimTurn = getAutoAimTurn();
-      if (autoAimTurn != 0) {
-        turn = autoAimTurn;
-        telemetry.addData("Auto-Aim", "AIMING");
+      double[] trackingOutput = getTagTracking();
+      if (trackingOutput != null) {
+        forward = trackingOutput[0];
+        strafe = trackingOutput[1];
+        turn = trackingOutput[2];
+        telemetry.addData("Tag Lock", "LOCKED");
       } else {
-        telemetry.addData("Auto-Aim", "NO TARGET");
+        telemetry.addData("Tag Lock", "NO TARGET");
       }
     } else {
-      telemetry.addData("Auto-Aim", "OFF");
+      telemetry.addData("Tag Lock", "OFF");
     }
 
     FL.setPower((forward + (strafe - turn)) * gearbox);
@@ -309,36 +326,53 @@ public class _20252026 extends LinearOpMode {
     }
   }
 
-  private double getAutoAimTurn() {
+  private double[] getTagTracking() {
     List<AprilTagDetection> detections = aprilTag.getDetections();
 
-    AprilTagDetection goalTag = null;
+    AprilTagDetection tag = null;
     for (AprilTagDetection detection : detections) {
       if (detection.id == TARGET_TAG_ID) {
-        goalTag = detection;
+        tag = detection;
         break;
       }
     }
 
-    if (goalTag == null || goalTag.ftcPose == null) {
-      return 0;
+    if (tag == null || tag.ftcPose == null) {
+      return null;
     }
 
-    double xOffset = goalTag.ftcPose.x;
+    double rangeCm = tag.ftcPose.range * INCHES_TO_CM;
+    double xOffsetCm = tag.ftcPose.x * INCHES_TO_CM;
+    double yaw = tag.ftcPose.yaw;
 
-    telemetry.addData("Tag ID", goalTag.id);
-    telemetry.addData("X Offset", "%.1f in", xOffset);
-    telemetry.addData("Range", "%.1f in", goalTag.ftcPose.range);
+    double rangeError = rangeCm - TARGET_DISTANCE_CM;
+    double xError = xOffsetCm - TARGET_X_OFFSET_CM;
+    double yawError = yaw - TARGET_YAW;
 
-    if (Math.abs(xOffset) < 1.0) {
-      telemetry.addData("Aligned", "YES");
-      return 0;
+    double drivePower = 0;
+    double strafePower = 0;
+    double turnPower = 0;
+
+    if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
+      drivePower = rangeError * DRIVE_GAIN;
+      drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
     }
 
-    double turnPower = xOffset * AUTO_AIM_GAIN;
-    turnPower = Math.max(-AUTO_AIM_MAX_TURN, Math.min(AUTO_AIM_MAX_TURN, turnPower));
+    if (Math.abs(xError) > X_TOLERANCE_CM) {
+      strafePower = xError * STRAFE_GAIN;
+      strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
+    }
 
-    return turnPower;
+    if (Math.abs(yawError) > YAW_TOLERANCE) {
+      turnPower = yawError * TURN_GAIN;
+      turnPower = Math.max(-MAX_TURN, Math.min(MAX_TURN, turnPower));
+    }
+
+    telemetry.addData("Range", "%.1f cm (err: %.1f)", rangeCm, rangeError);
+    telemetry.addData("X Offset", "%.1f cm (err: %.1f)", xOffsetCm, xError);
+    telemetry.addData("Yaw", "%.1f° (err: %.1f)", yaw, yawError);
+
+    return new double[]{drivePower, strafePower, turnPower};
   }
 
   private void updateTelemetry() {
