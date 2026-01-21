@@ -19,8 +19,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
-@TeleOp(name = "Neliscode")
-public class Neliscode extends LinearOpMode {
+@TeleOp(name = "Werkend")
+public class Werkend extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
@@ -58,9 +58,6 @@ public class Neliscode extends LinearOpMode {
   private static final double DISTANCE_TOLERANCE_CM = 5.0;
   private static final double X_TOLERANCE_CM = 2.5;
   private static final double YAW_TOLERANCE = 3.0;
-  
-  private static final double STRAFE_TO_KEEP_IN_VIEW_ANGLE = 25.0;
-  private static final double FULL_ALIGN_DISTANCE_CM = 90.0;
 
   private static final double FEEDER_REST_VOLTAGE = 2.2;
   private static final double FEEDER_MAX_EXTEND_VOLTAGE = 1.5;
@@ -397,34 +394,24 @@ public class Neliscode extends LinearOpMode {
     double rangeError = rangeCm - TARGET_DISTANCE_CM;
     double xError = xOffsetCm - TARGET_X_OFFSET_CM;
     double yawError = yaw - TARGET_YAW;
-    double xAngle = Math.toDegrees(Math.atan2(xOffsetCm, rangeCm));
 
     double drivePower = 0;
     double strafePower = 0;
     double turnPower = 0;
-
-    boolean closeEnough = rangeCm < FULL_ALIGN_DISTANCE_CM;
 
     if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
       drivePower = -rangeError * DRIVE_GAIN;
       drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
     }
 
+    if (Math.abs(xError) > X_TOLERANCE_CM) {
+      strafePower = -xError * STRAFE_GAIN;
+      strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
+    }
+
     if (Math.abs(yawError) > YAW_TOLERANCE) {
       turnPower = -yawError * TURN_GAIN;
       turnPower = Math.max(-MAX_TURN, Math.min(MAX_TURN, turnPower));
-    }
-
-    if (closeEnough) {
-      if (Math.abs(xError) > X_TOLERANCE_CM) {
-        strafePower = -xError * STRAFE_GAIN;
-        strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
-      }
-    } else {
-      if (Math.abs(xAngle) > STRAFE_TO_KEEP_IN_VIEW_ANGLE) {
-        strafePower = -xAngle * STRAFE_GAIN * 0.5;
-        strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
-      }
     }
 
     telemetry.addData("Range", "%.1f cm (err: %.1f)", rangeCm, rangeError);
