@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.ColorSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -18,8 +19,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
-@TeleOp(name = "_20252026 (Blocks to Java)")
-public class _20252026 extends LinearOpMode {
+@TeleOp(name = "Neliscode")
+public class Neliscode extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
@@ -34,6 +35,7 @@ public class _20252026 extends LinearOpMode {
   private TouchSensor hallsensor;
   private DistanceSensor dist;
   private DistanceSensor color_DistanceSensor;
+  private AnalogInput pot;
 
   private AprilTagProcessor aprilTag;
   private VisionPortal visionPortal;
@@ -57,6 +59,9 @@ public class _20252026 extends LinearOpMode {
   private static final double X_TOLERANCE_CM = 2.5;
   private static final double YAW_TOLERANCE = 3.0;
 
+  private static final double FEEDER_REST_VOLTAGE = 2.2;
+  private static final double FEEDER_MAX_EXTEND_VOLTAGE = 1.6;
+
   private boolean autoOn = true;
   private double gearbox = 0.4;
   private boolean spindexerCalibrating = true;
@@ -72,6 +77,9 @@ public class _20252026 extends LinearOpMode {
   private boolean yButtonPressed = false;
   private boolean autoAimEnabled = false;
   private boolean safeMode = false;
+  private boolean firingSequence = false;
+  private boolean waitingForFeederReturn = false;
+
 
   @Override
   public void runOpMode() {
@@ -85,7 +93,6 @@ public class _20252026 extends LinearOpMode {
 
     safeMode = gamepad1.ps;
     feeder.setPosition(0);
-    sleep(2000);
 
     ElapsedTime loopTimer = new ElapsedTime();
 
@@ -124,6 +131,7 @@ public class _20252026 extends LinearOpMode {
     hallsensor = hardwareMap.get(TouchSensor.class, "hall sensor");
     dist = hardwareMap.get(DistanceSensor.class, "dist");
     color_DistanceSensor = hardwareMap.get(DistanceSensor.class, "color");
+    pot = hardwareMap.get(AnalogInput.class, "pot");
 
     flywheel1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
     flywheel2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
@@ -261,23 +269,29 @@ public class _20252026 extends LinearOpMode {
     }
 
     if (!autoOn) {
+      intake.setPower(0);
       return;
     }
 
     switch (ballPosition) {
       case "inside":
         intake.setPower(0);
-        if (spindexerReady) {
+        if (spindexerReady && isFeederAtRest()) {
           detectBallColor();
           if (!detectedColor.equals("none") && ballCount < 3) {
             spindexerReady = false;
             spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
             ballCount++;
+            detectedColor = "none";
           }
         }
         break;
       case "close":
-        intake.setPower(1);
+        if (ballCount < 3) {
+          intake.setPower(1);
+        } else {
+          intake.setPower(0);
+        }
         break;
       case "far":
       default:
@@ -319,11 +333,34 @@ public class _20252026 extends LinearOpMode {
   }
 
   private void handleFeeder() {
-    if (gamepad1.right_trigger > 0.1 && spindexerReady) {
-      feeder.setPosition(0.4);
-    } else {
-      feeder.setPosition(0.05);
+    double voltage = pot.getVoltage();
+
+    if (voltage < FEEDER_MAX_EXTEND_VOLTAGE) {
+      feeder.setPosition(0.06);
+      waitingForFeederReturn = true;
+      return;
     }
+
+    if (waitingForFeederReturn && voltage > FEEDER_REST_VOLTAGE) {
+      waitingForFeederReturn = false;
+      if (firingSequence && ballCount > 0) {
+        spindexerReady = false;
+        spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
+        ballCount--;
+        firingSequence = false;
+      }
+    }
+
+    if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0) {
+      feeder.setPosition(0.4);
+      firingSequence = true;
+    } else if (!firingSequence) {
+      feeder.setPosition(0.06);
+    }
+  }
+
+  private boolean isFeederAtRest() {
+    return pot.getVoltage() > FEEDER_REST_VOLTAGE;
   }
 
   private double[] getTagTracking() {
@@ -354,17 +391,17 @@ public class _20252026 extends LinearOpMode {
     double turnPower = 0;
 
     if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
-      drivePower = rangeError * DRIVE_GAIN;
+      drivePower = -rangeError * DRIVE_GAIN;
       drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
     }
 
     if (Math.abs(xError) > X_TOLERANCE_CM) {
-      strafePower = xError * STRAFE_GAIN;
+      strafePower = -xError * STRAFE_GAIN;
       strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
     }
 
     if (Math.abs(yawError) > YAW_TOLERANCE) {
-      turnPower = yawError * TURN_GAIN;
+      turnPower = -yawError * TURN_GAIN;
       turnPower = Math.max(-MAX_TURN, Math.min(MAX_TURN, turnPower));
     }
 
@@ -384,6 +421,7 @@ public class _20252026 extends LinearOpMode {
     telemetry.addData("Balls", ballCount);
     telemetry.addData("Auto Intake", autoOn ? "ON" : "OFF");
     telemetry.addData("Spindexer", spindexerReady ? "READY" : "BUSY");
+    telemetry.addData("Feeder Pot", "%.2fV (rest: %s)", pot.getVoltage(), isFeederAtRest() ? "YES" : "NO");
     telemetry.addData("Max Shooter Amps", "%.2f", shooterMaxAmp);
     telemetry.update();
   }
