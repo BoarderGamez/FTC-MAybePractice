@@ -60,7 +60,7 @@ public class Neliscode extends LinearOpMode {
   private static final double YAW_TOLERANCE = 3.0;
 
   private static final double FEEDER_REST_VOLTAGE = 2.2;
-  private static final double FEEDER_MAX_EXTEND_VOLTAGE = 1.6;
+  private static final double FEEDER_MAX_EXTEND_VOLTAGE = 1.5;
 
   private boolean autoOn = true;
   private double gearbox = 0.4;
@@ -79,6 +79,8 @@ public class Neliscode extends LinearOpMode {
   private boolean safeMode = false;
   private boolean firingSequence = false;
   private boolean waitingForFeederReturn = false;
+  private boolean flywheelOn = false;
+  private boolean leftTriggerPressed = false;
 
 
   @Override
@@ -323,7 +325,14 @@ public class Neliscode extends LinearOpMode {
   }
 
   private void handleFlywheel() {
-    if (gamepad1.left_trigger > 0.1) {
+    if (gamepad1.left_trigger > 0.5 && !leftTriggerPressed) {
+      flywheelOn = !flywheelOn;
+      leftTriggerPressed = true;
+    } else if (gamepad1.left_trigger < 0.2) {
+      leftTriggerPressed = false;
+    }
+
+    if (flywheelOn) {
       flywheel1.setPower(0.8);
       flywheel2.setPower(0.8);
     } else {
@@ -352,7 +361,7 @@ public class Neliscode extends LinearOpMode {
     }
 
     if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0) {
-      feeder.setPosition(0.4);
+      feeder.setPosition(0.6);
       firingSequence = true;
     } else if (!firingSequence) {
       feeder.setPosition(0.06);
