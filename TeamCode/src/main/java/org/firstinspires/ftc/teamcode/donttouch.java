@@ -20,7 +20,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
 @TeleOp(name = "Werkend")
-public class Werkend extends LinearOpMode {
+public class donttouch extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
@@ -40,11 +40,11 @@ public class Werkend extends LinearOpMode {
   private AprilTagProcessor aprilTag;
   private VisionPortal visionPortal;
 
-  private static final int TARGET_TAG_ID = 20;
+  private static final int TARGET_TAG_ID = 24;
   private static final double INCHES_TO_CM = 2.54;
   
-  private static final double TARGET_DISTANCE_CM = 60.0;
-  private static final double TARGET_X_OFFSET_CM = 0.0;
+  private static final double TARGET_DISTANCE_CM = 160.0;
+  private static final double TARGET_X_OFFSET_CM = 20.0;
   private static final double TARGET_YAW = 0.0;
   
   private static final double DRIVE_GAIN = 0.015;
@@ -81,6 +81,8 @@ public class Werkend extends LinearOpMode {
   private boolean waitingForFeederReturn = false;
   private boolean flywheelOn = false;
   private boolean leftTriggerPressed = false;
+  private boolean recalibrated = false;
+  private boolean backTrack =false;
 
 
   @Override
@@ -109,6 +111,26 @@ public class Werkend extends LinearOpMode {
         handleIntake();
         handleFlywheel();
         handleFeeder();
+      }
+      if (gamepad1.b){
+        ballCount +=1;
+        while (gamepad1.b){}
+      }
+      if (gamepad1.x){
+        ballCount -=1;
+        while (gamepad1.x) {
+          
+        }
+      }
+
+      if (ballCount ==0 && !recalibrated){
+        spindexerCalibrating = true;
+        calibrationPhase1Complete = false;
+        recalibrated = true;
+
+      }
+      if (ballCount !=0 || ballCount<3){
+        recalibrated = false;
       }
 
       updateTelemetry();
@@ -323,21 +345,14 @@ public class Werkend extends LinearOpMode {
       detectedColor = "none";
     }
   }
-
+  
   private void handleFlywheel() {
-    if (gamepad1.left_trigger > 0.5 && !leftTriggerPressed) {
-      flywheelOn = !flywheelOn;
-      leftTriggerPressed = true;
-    } else if (gamepad1.left_trigger < 0.2) {
-      leftTriggerPressed = false;
-    }
-
-    if (flywheelOn) {
-      flywheel1.setPower(0.8);
-      flywheel2.setPower(0.8);
-    } else {
-      flywheel1.setPower(0);
-      flywheel2.setPower(0);
+    if (gamepad1.left_trigger > 0.5) {
+      ((DcMotorEx) flywheel1).setVelocity(1200);
+      ((DcMotorEx) flywheel2).setVelocity(1200);
+    } else {  
+      ((DcMotorEx) flywheel1).setVelocity(0);
+      ((DcMotorEx) flywheel2).setVelocity(0);
     }
   }
 
@@ -360,12 +375,12 @@ public class Werkend extends LinearOpMode {
       }
     }
 
-    if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0) {
-      feeder.setPosition(0.6);
-      firingSequence = true;
-    } else if (!firingSequence) {
-      feeder.setPosition(0.06);
-    }
+      if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0 && ((DcMotorEx)flywheel2).getVelocity()>=1100) {
+        feeder.setPosition(0.6);
+        firingSequence = true;
+      } else if (!firingSequence) {
+        feeder.setPosition(0.06);
+      }
   }
 
   private boolean isFeederAtRest() {
@@ -432,6 +447,9 @@ public class Werkend extends LinearOpMode {
     telemetry.addData("Spindexer", spindexerReady ? "READY" : "BUSY");
     telemetry.addData("Feeder Pot", "%.2fV (rest: %s)", pot.getVoltage(), isFeederAtRest() ? "YES" : "NO");
     telemetry.addData("Max Shooter Amps", "%.2f", shooterMaxAmp);
+    telemetry.addData("Shooter speed1", ((DcMotorEx)flywheel1).getVelocity());
+    telemetry.addData("Shooter speed2", ((DcMotorEx)flywheel2).getVelocity());
+    
     telemetry.update();
   }
 }

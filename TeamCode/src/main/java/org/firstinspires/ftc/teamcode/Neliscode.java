@@ -19,8 +19,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
-@TeleOp(name = "Neliscode")
-public class Neliscode extends LinearOpMode {
+@TeleOp(name = "Werkend")
+public class donttouch extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
@@ -40,11 +40,11 @@ public class Neliscode extends LinearOpMode {
   private AprilTagProcessor aprilTag;
   private VisionPortal visionPortal;
 
-  private static final int TARGET_TAG_ID = 20;
+  private static final int TARGET_TAG_ID = 24;
   private static final double INCHES_TO_CM = 2.54;
   
-  private static final double TARGET_DISTANCE_CM = 60.0;
-  private static final double TARGET_X_OFFSET_CM = 0.0;
+  private static final double TARGET_DISTANCE_CM = 160.0;
+  private static final double TARGET_X_OFFSET_CM = 20.0;
   private static final double TARGET_YAW = 0.0;
   
   private static final double DRIVE_GAIN = 0.015;
@@ -58,9 +58,6 @@ public class Neliscode extends LinearOpMode {
   private static final double DISTANCE_TOLERANCE_CM = 5.0;
   private static final double X_TOLERANCE_CM = 2.5;
   private static final double YAW_TOLERANCE = 3.0;
-  
-  private static final double STRAFE_TO_KEEP_IN_VIEW_ANGLE = 25.0;
-  private static final double FULL_ALIGN_DISTANCE_CM = 90.0;
 
   private static final double FEEDER_REST_VOLTAGE = 2.2;
   private static final double FEEDER_MAX_EXTEND_VOLTAGE = 1.5;
@@ -84,6 +81,8 @@ public class Neliscode extends LinearOpMode {
   private boolean waitingForFeederReturn = false;
   private boolean flywheelOn = false;
   private boolean leftTriggerPressed = false;
+  private boolean recalibrated = false;
+  private boolean backTrack =false;
 
 
   @Override
@@ -112,6 +111,26 @@ public class Neliscode extends LinearOpMode {
         handleIntake();
         handleFlywheel();
         handleFeeder();
+      }
+      if (gamepad1.b){
+        ballCount +=1;
+        while (gamepad1.b){}
+      }
+      if (gamepad1.x){
+        ballCount -=1;
+        while (gamepad1.x) {
+          
+        }
+      }
+
+      if (ballCount ==0 && !recalibrated){
+        spindexerCalibrating = true;
+        calibrationPhase1Complete = false;
+        recalibrated = true;
+
+      }
+      if (ballCount !=0 || ballCount<3){
+        recalibrated = false;
       }
 
       updateTelemetry();
@@ -326,21 +345,14 @@ public class Neliscode extends LinearOpMode {
       detectedColor = "none";
     }
   }
-
+  
   private void handleFlywheel() {
-    if (gamepad1.left_trigger > 0.5 && !leftTriggerPressed) {
-      flywheelOn = !flywheelOn;
-      leftTriggerPressed = true;
-    } else if (gamepad1.left_trigger < 0.2) {
-      leftTriggerPressed = false;
-    }
-
-    if (flywheelOn) {
-      flywheel1.setPower(0.8);
-      flywheel2.setPower(0.8);
-    } else {
-      flywheel1.setPower(0);
-      flywheel2.setPower(0);
+    if (gamepad1.left_trigger > 0.5) {
+      ((DcMotorEx) flywheel1).setVelocity(1200);
+      ((DcMotorEx) flywheel2).setVelocity(1200);
+    } else {  
+      ((DcMotorEx) flywheel1).setVelocity(0);
+      ((DcMotorEx) flywheel2).setVelocity(0);
     }
   }
 
@@ -363,12 +375,12 @@ public class Neliscode extends LinearOpMode {
       }
     }
 
-    if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0) {
-      feeder.setPosition(0.6);
-      firingSequence = true;
-    } else if (!firingSequence) {
-      feeder.setPosition(0.06);
-    }
+      if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0 && ((DcMotorEx)flywheel2).getVelocity()>=1100) {
+        feeder.setPosition(0.6);
+        firingSequence = true;
+      } else if (!firingSequence) {
+        feeder.setPosition(0.06);
+      }
   }
 
   private boolean isFeederAtRest() {
@@ -397,34 +409,24 @@ public class Neliscode extends LinearOpMode {
     double rangeError = rangeCm - TARGET_DISTANCE_CM;
     double xError = xOffsetCm - TARGET_X_OFFSET_CM;
     double yawError = yaw - TARGET_YAW;
-    double xAngle = Math.toDegrees(Math.atan2(xOffsetCm, rangeCm));
 
     double drivePower = 0;
     double strafePower = 0;
     double turnPower = 0;
-
-    boolean closeEnough = rangeCm < FULL_ALIGN_DISTANCE_CM;
 
     if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
       drivePower = -rangeError * DRIVE_GAIN;
       drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
     }
 
+    if (Math.abs(xError) > X_TOLERANCE_CM) {
+      strafePower = -xError * STRAFE_GAIN;
+      strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
+    }
+
     if (Math.abs(yawError) > YAW_TOLERANCE) {
       turnPower = -yawError * TURN_GAIN;
       turnPower = Math.max(-MAX_TURN, Math.min(MAX_TURN, turnPower));
-    }
-
-    if (closeEnough) {
-      if (Math.abs(xError) > X_TOLERANCE_CM) {
-        strafePower = -xError * STRAFE_GAIN;
-        strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
-      }
-    } else {
-      if (Math.abs(xAngle) > STRAFE_TO_KEEP_IN_VIEW_ANGLE) {
-        strafePower = -xAngle * STRAFE_GAIN * 0.5;
-        strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
-      }
     }
 
     telemetry.addData("Range", "%.1f cm (err: %.1f)", rangeCm, rangeError);
@@ -445,6 +447,9 @@ public class Neliscode extends LinearOpMode {
     telemetry.addData("Spindexer", spindexerReady ? "READY" : "BUSY");
     telemetry.addData("Feeder Pot", "%.2fV (rest: %s)", pot.getVoltage(), isFeederAtRest() ? "YES" : "NO");
     telemetry.addData("Max Shooter Amps", "%.2f", shooterMaxAmp);
+    telemetry.addData("Shooter speed1", ((DcMotorEx)flywheel1).getVelocity());
+    telemetry.addData("Shooter speed2", ((DcMotorEx)flywheel2).getVelocity());
+    
     telemetry.update();
   }
 }
