@@ -19,8 +19,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
-@TeleOp(name = "Werkend")
-public class donttouch extends LinearOpMode {
+@TeleOp(name = "wip")
+public class Neliscode extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
@@ -43,8 +43,8 @@ public class donttouch extends LinearOpMode {
   private static final int TARGET_TAG_ID = 24;
   private static final double INCHES_TO_CM = 2.54;
   
-  private static final double TARGET_DISTANCE_CM = 160.0;
-  private static final double TARGET_X_OFFSET_CM = 20.0;
+  private static final double TARGET_DISTANCE_CM = 230.0;
+  private static final double TARGET_X_OFFSET_CM = 0.0;
   private static final double TARGET_YAW = 0.0;
   
   private static final double DRIVE_GAIN = 0.015;
@@ -58,17 +58,19 @@ public class donttouch extends LinearOpMode {
   private static final double DISTANCE_TOLERANCE_CM = 5.0;
   private static final double X_TOLERANCE_CM = 2.5;
   private static final double YAW_TOLERANCE = 3.0;
+  private static final double FULL_ALIGN_DISTANCE_CM = 200.0;
 
   private static final double FEEDER_REST_VOLTAGE = 2.2;
   private static final double FEEDER_MAX_EXTEND_VOLTAGE = 1.5;
 
   private boolean autoOn = true;
+  private static final boolean AUTO_SHOOTER_ENABLED = false;
   private double gearbox = 0.4;
   private boolean spindexerCalibrating = true;
   private boolean spindexerReady = false;
   private String detectedColor = "none";
   private double ballDistance = 100.0;
-  private int ballCount = 0;
+  private int ballCount = 1;
   private double shooterMaxAmp = 0;
 
   private boolean calibrationPhase1Complete = false;
@@ -81,6 +83,9 @@ public class donttouch extends LinearOpMode {
   private boolean waitingForFeederReturn = false;
   private boolean flywheelOn = false;
   private boolean leftTriggerPressed = false;
+  private boolean autoShootingCycle = false;
+  private int prevBallCount = 0;
+  private boolean ballBeingProcessed = false;
   private boolean recalibrated = false;
   private boolean backTrack =false;
 
@@ -269,7 +274,15 @@ public class donttouch extends LinearOpMode {
 
     if (!spindexer.isBusy()) {
       spindexerReady = true;
+      ballBeingProcessed = false;
     }
+
+    if (ballCount == 0 && prevBallCount > 0 && spindexerReady && !spindexerCalibrating) {
+      spindexerCalibrating = true;
+      calibrationPhase1Complete = false;
+    }
+
+    prevBallCount = ballCount;
   }
 
   private void handleIntake() {
@@ -300,18 +313,19 @@ public class donttouch extends LinearOpMode {
     switch (ballPosition) {
       case "inside":
         intake.setPower(0);
-        if (spindexerReady && isFeederAtRest()) {
+        if (!ballBeingProcessed && spindexerReady && isFeederAtRest() && !spindexerCalibrating) {
           detectBallColor();
-          if (!detectedColor.equals("none") && ballCount < 3) {
+          if (!detectedColor.equals("none") && ballCount < 4) {
             spindexerReady = false;
             spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
             ballCount++;
             detectedColor = "none";
+            ballBeingProcessed = true;
           }
         }
         break;
       case "close":
-        if (ballCount < 3) {
+        if (ballCount >= 1 && ballCount < 4) {
           intake.setPower(1);
         } else {
           intake.setPower(0);
@@ -319,6 +333,9 @@ public class donttouch extends LinearOpMode {
         break;
       case "far":
       default:
+        if (spindexerReady) {
+          ballBeingProcessed = false;
+        }
         intake.setPower(0);
         break;
     }
@@ -347,7 +364,26 @@ public class donttouch extends LinearOpMode {
   }
   
   private void handleFlywheel() {
-    if (gamepad1.left_trigger > 0.5) {
+    if (AUTO_SHOOTER_ENABLED) {
+      if (ballCount >= 4) {
+        autoShootingCycle = true;
+      }
+      if (ballCount <= 1) {
+        autoShootingCycle = false;
+      }
+    }
+
+    if (gamepad1.left_trigger > 0.5 && !leftTriggerPressed) {
+      flywheelOn = !flywheelOn;
+      leftTriggerPressed = true;
+      if (!flywheelOn) {
+        autoAimEnabled = false;
+      }
+    } else if (gamepad1.left_trigger < 0.3) {
+      leftTriggerPressed = false;
+    }
+
+    if (autoShootingCycle || flywheelOn) {
       ((DcMotorEx) flywheel1).setVelocity(1200);
       ((DcMotorEx) flywheel2).setVelocity(1200);
     } else {  
@@ -371,11 +407,14 @@ public class donttouch extends LinearOpMode {
         spindexerReady = false;
         spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
         ballCount--;
+        if (ballCount <= 0) {
+          ballCount = 1;
+        }
         firingSequence = false;
       }
     }
 
-      if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0 && ((DcMotorEx)flywheel2).getVelocity()>=1100) {
+      if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0 && ((DcMotorEx)flywheel2).getVelocity()>=1170 && ((DcMotorEx)flywheel2).getVelocity()<=1230) {
         feeder.setPosition(0.6);
         firingSequence = true;
       } else if (!firingSequence) {
@@ -414,19 +453,21 @@ public class donttouch extends LinearOpMode {
     double strafePower = 0;
     double turnPower = 0;
 
-    if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
-      drivePower = -rangeError * DRIVE_GAIN;
-      drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
-    }
+    boolean closeEnough = rangeCm < FULL_ALIGN_DISTANCE_CM;
 
     if (Math.abs(xError) > X_TOLERANCE_CM) {
-      strafePower = -xError * STRAFE_GAIN;
-      strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
+      drivePower = -xError * DRIVE_GAIN;
+      drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
     }
 
     if (Math.abs(yawError) > YAW_TOLERANCE) {
       turnPower = -yawError * TURN_GAIN;
       turnPower = Math.max(-MAX_TURN, Math.min(MAX_TURN, turnPower));
+    }
+
+    if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
+      strafePower = -rangeError * STRAFE_GAIN;
+      strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
     }
 
     telemetry.addData("Range", "%.1f cm (err: %.1f)", rangeCm, rangeError);
