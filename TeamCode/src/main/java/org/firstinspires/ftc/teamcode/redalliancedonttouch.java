@@ -46,6 +46,8 @@ public class redalliancedonttouch extends LinearOpMode {
   private static final double TARGET_DISTANCE_CM = 230.0;
   private static final double TARGET_X_OFFSET_CM = 0.0;
   private static final double TARGET_YAW = 0.0;
+  private static final double ROTATE_MODE_X_OFFSET_CM = 10.0;
+  private static final double ROTATE_MODE_DISTANCE_CM = 230.0;
   
   private static final double DRIVE_GAIN = 0.015;
   private static final double STRAFE_GAIN = 0.015;
@@ -78,6 +80,8 @@ public class redalliancedonttouch extends LinearOpMode {
   private boolean aButtonPressed = false;
   private boolean yButtonPressed = false;
   private boolean autoAimEnabled = false;
+  private boolean rotateToTagEnabled = false;
+  private boolean bButtonPressed = false;
   private boolean safeMode = false;
   private boolean firingSequence = false;
   private boolean waitingForFeederReturn = false;
@@ -117,13 +121,13 @@ public class redalliancedonttouch extends LinearOpMode {
         handleFlywheel();
         handleFeeder();
       }
-      if (gamepad1.b){
+      if (gamepad1.dpad_right){
         ballCount +=1;
-        while (gamepad1.b){}
+        while (gamepad1.dpad_right){}
       }
-      if (gamepad1.x){
+      if (gamepad1.dpad_left){
         ballCount -=1;
-        while (gamepad1.x) {
+        while (gamepad1.dpad_left) {
           
         }
       }
@@ -206,6 +210,13 @@ public class redalliancedonttouch extends LinearOpMode {
       yButtonPressed = false;
     }
 
+    if (gamepad1.b && !bButtonPressed) {
+      rotateToTagEnabled = !rotateToTagEnabled;
+      bButtonPressed = true;
+    } else if (!gamepad1.b) {
+      bButtonPressed = false;
+    }
+
     if (autoAimEnabled) {
       double[] trackingOutput = getTagTracking();
       if (trackingOutput != null) {
@@ -213,6 +224,15 @@ public class redalliancedonttouch extends LinearOpMode {
         strafe = trackingOutput[1];
         turn = trackingOutput[2];
         telemetry.addData("Tag Lock", "LOCKED");
+      } else {
+        telemetry.addData("Tag Lock", "NO TARGET");
+      }
+    } else if (rotateToTagEnabled) {
+      double[] trackingOutput = getRotateToTagTracking();
+      if (trackingOutput != null) {
+        turn = trackingOutput[0];
+        strafe = trackingOutput[1];
+        telemetry.addData("Tag Lock", "ROTATE + DISTANCE");
       } else {
         telemetry.addData("Tag Lock", "NO TARGET");
       }
@@ -378,6 +398,7 @@ public class redalliancedonttouch extends LinearOpMode {
       leftTriggerPressed = true;
       if (!flywheelOn) {
         autoAimEnabled = false;
+        rotateToTagEnabled = false;
       }
     } else if (gamepad1.left_trigger < 0.3) {
       leftTriggerPressed = false;
@@ -455,10 +476,10 @@ public class redalliancedonttouch extends LinearOpMode {
 
     boolean closeEnough = rangeCm < FULL_ALIGN_DISTANCE_CM;
 
-    if (Math.abs(xError) > X_TOLERANCE_CM) {
-      drivePower = -xError * DRIVE_GAIN;
-      drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
-    }
+    // if (Math.abs(xError) > X_TOLERANCE_CM) {
+    //   drivePower = -xError * DRIVE_GAIN;
+    //   drivePower = Math.max(-MAX_DRIVE, Math.min(MAX_DRIVE, drivePower));
+    // }
 
     if (Math.abs(yawError) > YAW_TOLERANCE) {
       turnPower = -yawError * TURN_GAIN;
@@ -475,6 +496,45 @@ public class redalliancedonttouch extends LinearOpMode {
     telemetry.addData("Yaw", "%.1f° (err: %.1f)", yaw, yawError);
 
     return new double[]{drivePower, strafePower, turnPower};
+  }
+
+  private double[] getRotateToTagTracking() {
+    List<AprilTagDetection> detections = aprilTag.getDetections();
+
+    AprilTagDetection tag = null;
+    for (AprilTagDetection detection : detections) {
+      if (detection.id == TARGET_TAG_ID) {
+        tag = detection;
+        break;
+      }
+    }
+
+    if (tag == null || tag.ftcPose == null) {
+      return null;
+    }
+
+    double rangeCm = tag.ftcPose.range * INCHES_TO_CM;
+    double xOffsetCm = tag.ftcPose.x * INCHES_TO_CM;
+    double rangeError = rangeCm - ROTATE_MODE_DISTANCE_CM;
+    double xError = xOffsetCm - ROTATE_MODE_X_OFFSET_CM;
+
+    double turnPower = 0;
+    double strafePower = 0;
+
+    if (Math.abs(xError) > X_TOLERANCE_CM) {
+      turnPower = xError * TURN_GAIN;
+      turnPower = Math.max(-MAX_TURN, Math.min(MAX_TURN, turnPower));
+    }
+
+    if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
+      strafePower = -rangeError * STRAFE_GAIN;
+      strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
+    }
+
+    telemetry.addData("Range", "%.1f cm (err: %.1f)", rangeCm, rangeError);
+    telemetry.addData("X Offset", "%.1f cm (err: %.1f)", xOffsetCm, xError);
+
+    return new double[]{turnPower, strafePower};
   }
 
   private void updateTelemetry() {

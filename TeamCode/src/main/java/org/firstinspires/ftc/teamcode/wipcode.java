@@ -75,6 +75,14 @@ public class wipcode extends LinearOpMode {
   private int ballCount = 1;
   private double shooterMaxAmp = 0;
 
+  private String[] slotColors = {"none", "none", "none"};
+  private static final String[] SHOOTING_ORDER = {"purple", "green", "purple"};
+  private int shootingOrderIndex = 0;
+  private boolean sortingRotation = false;
+  private int sortingTargetSlot = -1;
+  private boolean pendingColorUpdate = false;
+  private String pendingColor = "none";
+
   private boolean calibrationPhase1Complete = false;
   private boolean gearShiftPressed = false;
   private boolean aButtonPressed = false;
@@ -91,7 +99,9 @@ public class wipcode extends LinearOpMode {
   private int prevBallCount = 0;
   private boolean ballBeingProcessed = false;
   private boolean recalibrated = false;
-  private boolean backTrack =false;
+  private boolean backTrack = false;
+  private boolean intakeModeActive = false;
+  private boolean intakeModeUsed = false;
 
 
   @Override
@@ -127,6 +137,9 @@ public class wipcode extends LinearOpMode {
       }
       if (gamepad1.dpad_left){
         ballCount -=1;
+        if (ballCount < 1) {
+          ballCount = 1;
+        }
         while (gamepad1.dpad_left) {
           
         }
@@ -265,6 +278,8 @@ public class wipcode extends LinearOpMode {
     if (gamepad1.ps) {
       spindexerCalibrating = true;
       calibrationPhase1Complete = false;
+      slotColors = new String[]{"none", "none", "none"};
+      ballCount = 1;
     }
 
     if (spindexerCalibrating) {
@@ -295,6 +310,13 @@ public class wipcode extends LinearOpMode {
     if (!spindexer.isBusy()) {
       spindexerReady = true;
       ballBeingProcessed = false;
+      
+      if (pendingColorUpdate) {
+        rotateSlotColorsAnticlockwise();
+        slotColors[1] = pendingColor;
+        pendingColorUpdate = false;
+        pendingColor = "none";
+      }
     }
 
     if (ballCount == 0 && prevBallCount > 0 && spindexerReady && !spindexerCalibrating) {
@@ -313,6 +335,29 @@ public class wipcode extends LinearOpMode {
       aButtonPressed = false;
     }
 
+    if (!gamepad1.x) {
+      intakeModeUsed = false;
+    }
+
+    if (gamepad1.x && !intakeModeUsed && spindexerReady && !sortingRotation) {
+      int emptySlot = findSlotWithColor("none");
+      if (emptySlot == 2) {
+        intakeModeActive = true;
+        spindexerReady = false;
+        spindexer.setTargetPosition(spindexer.getTargetPosition() - 380);
+        rotateSlotColorsClockwise();
+      } else if (emptySlot == 1) {
+        intakeModeActive = true;
+        spindexerReady = false;
+        spindexer.setTargetPosition(spindexer.getTargetPosition() - 380 * 2);
+        rotateSlotColorsClockwise();
+        rotateSlotColorsClockwise();
+      } else if (emptySlot == 0) {
+        intakeModeActive = true;
+      }
+      intakeModeUsed = true;
+    }
+
     ballDistance = dist.getDistance(DistanceUnit.CM);
     double colorDistance = color_DistanceSensor.getDistance(DistanceUnit.CM);
 
@@ -325,7 +370,21 @@ public class wipcode extends LinearOpMode {
       ballPosition = "far";
     }
 
+    if (intakeModeActive && ballPosition.equals("inside") && spindexerReady) {
+      intakeModeActive = false;
+    }
+
     if (!autoOn) {
+      intake.setPower(0);
+      return;
+    }
+
+    if (sortingRotation || !spindexerReady) {
+      intake.setPower(-0.5);
+      return;
+    }
+
+    if (!slotColors[0].equals("none")) {
       intake.setPower(0);
       return;
     }
@@ -336,6 +395,8 @@ public class wipcode extends LinearOpMode {
         if (!ballBeingProcessed && spindexerReady && isFeederAtRest() && !spindexerCalibrating) {
           detectBallColor();
           if (!detectedColor.equals("none") && ballCount < 4) {
+            pendingColor = detectedColor;
+            pendingColorUpdate = true;
             spindexerReady = false;
             spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
             ballCount++;
@@ -345,7 +406,7 @@ public class wipcode extends LinearOpMode {
         }
         break;
       case "close":
-        if (ballCount >= 1 && ballCount < 4) {
+        if (ballCount < 4) {
           intake.setPower(1);
         } else {
           intake.setPower(0);
@@ -359,6 +420,20 @@ public class wipcode extends LinearOpMode {
         intake.setPower(0);
         break;
     }
+  }
+
+  private void rotateSlotColorsAnticlockwise() {
+    String temp = slotColors[2];
+    slotColors[2] = slotColors[1];
+    slotColors[1] = slotColors[0];
+    slotColors[0] = temp;
+  }
+
+  private void rotateSlotColorsClockwise() {
+    String temp = slotColors[0];
+    slotColors[0] = slotColors[1];
+    slotColors[1] = slotColors[2];
+    slotColors[2] = temp;
   }
 
   private void detectBallColor() {
@@ -425,22 +500,68 @@ public class wipcode extends LinearOpMode {
     if (waitingForFeederReturn && voltage > FEEDER_REST_VOLTAGE) {
       waitingForFeederReturn = false;
       if (firingSequence && ballCount > 0) {
+        slotColors[2] = "none";
         spindexerReady = false;
         spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
+        rotateSlotColorsAnticlockwise();
         ballCount--;
-        if (ballCount <= 0) {
+        if (ballCount < 1) {
           ballCount = 1;
+        }
+        shootingOrderIndex++;
+        if (shootingOrderIndex >= SHOOTING_ORDER.length) {
+          shootingOrderIndex = 0;
         }
         firingSequence = false;
       }
     }
 
-      if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && ballCount > 0 && ((DcMotorEx)flywheel2).getVelocity()>=1170 && ((DcMotorEx)flywheel2).getVelocity()<=1230) {
-        feeder.setPosition(0.6);
-        firingSequence = true;
-      } else if (!firingSequence) {
-        feeder.setPosition(0.06);
+    if (sortingRotation && spindexerReady) {
+      sortingRotation = false;
+    }
+
+    boolean flywheelReady = ((DcMotorEx)flywheel2).getVelocity() >= 1170 && ((DcMotorEx)flywheel2).getVelocity() <= 1230;
+
+    if (gamepad1.right_trigger > 0.2 && spindexerReady && !firingSequence && !sortingRotation && !intakeModeActive && ballCount > 0) {
+      
+      String neededColor = SHOOTING_ORDER[shootingOrderIndex];
+      
+      if (slotColors[2].equals(neededColor)) {
+        if (flywheelReady) {
+          feeder.setPosition(0.6);
+          firingSequence = true;
+        }
+      } else if (flywheelReady) {
+        int correctSlot = findSlotWithColor(neededColor);
+        
+        if (correctSlot == -1) {
+          correctSlot = findSlotWithColor("green".equals(neededColor) ? "purple" : "green");
+        }
+        
+        if (correctSlot == 1) {
+          sortingRotation = true;
+          spindexerReady = false;
+          spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
+          rotateSlotColorsAnticlockwise();
+        } else if (correctSlot == 0) {
+          sortingRotation = true;
+          spindexerReady = false;
+          spindexer.setTargetPosition(spindexer.getTargetPosition() - 380);
+          rotateSlotColorsClockwise();
+        }
       }
+    } else if (!firingSequence) {
+      feeder.setPosition(0.06);
+    }
+  }
+
+  private int findSlotWithColor(String color) {
+    for (int i = 0; i < slotColors.length; i++) {
+      if (slotColors[i].equals(color)) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   private boolean isFeederAtRest() {
@@ -527,7 +648,7 @@ public class wipcode extends LinearOpMode {
     }
 
     if (Math.abs(rangeError) > DISTANCE_TOLERANCE_CM) {
-      strafePower = rangeError * STRAFE_GAIN;
+      strafePower = -rangeError * STRAFE_GAIN;
       strafePower = Math.max(-MAX_STRAFE, Math.min(MAX_STRAFE, strafePower));
     }
 
@@ -544,12 +665,17 @@ public class wipcode extends LinearOpMode {
 
     telemetry.addData("Gearbox", "%.1f", gearbox);
     telemetry.addData("Balls", ballCount);
+    telemetry.addData("Slots", "[1:%s] [2:%s] [3:%s]", slotColors[0], slotColors[1], slotColors[2]);
+    telemetry.addData("Shooting Order", "%d/3 - Need: %s", shootingOrderIndex + 1, SHOOTING_ORDER[shootingOrderIndex]);
     telemetry.addData("Auto Intake", autoOn ? "ON" : "OFF");
-    telemetry.addData("Spindexer", spindexerReady ? "READY" : "BUSY");
+    telemetry.addData("Spindexer", spindexerReady ? "READY" : (sortingRotation ? "SORTING" : "BUSY"));
+    telemetry.addData("Intake Mode", intakeModeActive ? "ACTIVE" : "OFF");
     telemetry.addData("Feeder Pot", "%.2fV (rest: %s)", pot.getVoltage(), isFeederAtRest() ? "YES" : "NO");
     telemetry.addData("Max Shooter Amps", "%.2f", shooterMaxAmp);
     telemetry.addData("Shooter speed1", ((DcMotorEx)flywheel1).getVelocity());
     telemetry.addData("Shooter speed2", ((DcMotorEx)flywheel2).getVelocity());
+    telemetry.addData("Detected Color", detectedColor);
+    telemetry.addData("Ball Distance", "%.1f cm", ballDistance);
     
     telemetry.update();
   }
