@@ -19,8 +19,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
-@TeleOp(name = "wip")
-public class Neliscode extends LinearOpMode {
+@TeleOp(name = "Red Alliance")
+public class redalliancedonttouch extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
