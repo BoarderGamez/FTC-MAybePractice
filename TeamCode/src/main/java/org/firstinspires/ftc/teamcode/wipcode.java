@@ -233,6 +233,7 @@ public class wipcode extends LinearOpMode {
     FR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
     RL.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
     RR.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+    intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
     FL.setDirection(DcMotor.Direction.REVERSE);
     FR.setDirection(DcMotor.Direction.REVERSE);
     RL.setDirection(DcMotor.Direction.FORWARD);
@@ -422,7 +423,7 @@ public class wipcode extends LinearOpMode {
     }
 
     if (sortingRotation || !spindexerReady) {
-      intake.setPower(-0.5);
+      intake.setPower(0);
       return;
     }
 
