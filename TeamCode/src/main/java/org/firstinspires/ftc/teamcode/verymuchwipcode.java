@@ -19,8 +19,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
-@TeleOp(name = "wip")
-public class wipcode extends LinearOpMode {
+@TeleOp(name = "wipcodevery")
+public class verymuchwipcode extends LinearOpMode {
 
   private DcMotor flywheel1;
   private DcMotor flywheel2;
@@ -224,6 +224,7 @@ public class wipcode extends LinearOpMode {
 
     flywheel1.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
     flywheel2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+    intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
     flywheel1.setDirection(DcMotor.Direction.REVERSE);
     spindexer.setDirection(DcMotor.Direction.REVERSE);
     feeder.setDirection(Servo.Direction.REVERSE);
@@ -286,8 +287,8 @@ public class wipcode extends LinearOpMode {
     } else if (rotateToTagEnabled) {
       double[] trackingOutput = getRotateToTagTracking();
       if (trackingOutput != null) {
-        turn = trackingOutput[0];
-        strafe = trackingOutput[1];
+        turn = trackingOutput[0] * 0.3;
+        strafe = trackingOutput[1] * 0.4;
         telemetry.addData("Tag Lock", "ROTATE + DISTANCE");
       } else {
         telemetry.addData("Tag Lock", "NO TARGET");
@@ -296,10 +297,11 @@ public class wipcode extends LinearOpMode {
       telemetry.addData("Tag Lock", "OFF");
     }
 
-    FL.setPower((forward + (strafe - turn)) * gearbox);
-    RL.setPower((forward - (strafe + turn)) * gearbox);
-    FR.setPower((forward + strafe + turn) * gearbox);
-    RR.setPower((forward - (strafe - turn)) * gearbox);
+    double speedMultiplier = (autoAimEnabled || rotateToTagEnabled) ? 1.0 : gearbox;
+    FL.setPower((forward + (strafe - turn)) * speedMultiplier);
+    RL.setPower((forward - (strafe + turn)) * speedMultiplier);
+    FR.setPower((forward + strafe + turn) * speedMultiplier);
+    RR.setPower((forward - (strafe - turn)) * speedMultiplier);
   }
 
   private void handleGearShift() {
@@ -422,7 +424,7 @@ public class wipcode extends LinearOpMode {
     }
 
     if (sortingRotation || !spindexerReady) {
-      intake.setPower(-0.5);
+      intake.setPower(0);
       return;
     }
 
@@ -565,27 +567,37 @@ public class wipcode extends LinearOpMode {
       
       String neededColor = currentShootingOrder[shootingOrderIndex];
       
-      if (slotColors[2].equals(neededColor)) {
+      int correctSlot = findSlotWithColor(neededColor);
+      
+      if (correctSlot == 2) {
         if (flywheelReady) {
           feeder.setPosition(0.6);
           firingSequence = true;
         }
-      } else if (flywheelReady) {
-        int correctSlot = findSlotWithColor(neededColor);
-        
-        if (correctSlot == 1) {
+      } else if (correctSlot == 1 && flywheelReady) {
+        sortingRotation = true;
+        spindexerReady = false;
+        spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
+        rotateSlotColorsAnticlockwise();
+      } else if (correctSlot == 0 && flywheelReady) {
+        sortingRotation = true;
+        spindexerReady = false;
+        spindexer.setTargetPosition(spindexer.getTargetPosition() - 380);
+        rotateSlotColorsClockwise();
+      } else if (correctSlot == -1 && flywheelReady) {
+        if (!slotColors[2].equals("none")) {
+          feeder.setPosition(0.6);
+          firingSequence = true;
+        } else if (!slotColors[1].equals("none")) {
           sortingRotation = true;
           spindexerReady = false;
           spindexer.setTargetPosition(spindexer.getTargetPosition() + 380);
           rotateSlotColorsAnticlockwise();
-        } else if (correctSlot == 0) {
+        } else if (!slotColors[0].equals("none")) {
           sortingRotation = true;
           spindexerReady = false;
           spindexer.setTargetPosition(spindexer.getTargetPosition() - 380);
           rotateSlotColorsClockwise();
-        } else if (correctSlot == -1 && !slotColors[2].equals("none")) {
-          feeder.setPosition(0.6);
-          firingSequence = true;
         }
       }
     } else if (!firingSequence) {
@@ -725,7 +737,7 @@ public class wipcode extends LinearOpMode {
                         ((DcMotorEx) flywheel2).getCurrent(CurrentUnit.AMPS);
     shooterMaxAmp = Math.max(shooterMaxAmp, currentAmp);
 
-    telemetry.addData("=== STORAGE ===", storageCount);
+    telemetry.addData("=== Balls ===", storageCount);
     telemetry.addData("Order Pattern", "%s (Tag %d)", getOrderName(), ORDER_TAG_IDS[currentOrderIndex]);
     telemetry.addData("Next Shot", "%d/3 - Need: %s", shootingOrderIndex + 1, currentShootingOrder[shootingOrderIndex]);
     telemetry.addData("Gearbox", "%.1f", gearbox);
@@ -738,6 +750,8 @@ public class wipcode extends LinearOpMode {
     telemetry.addData("Max Shooter Amps", "%.2f", shooterMaxAmp);
     telemetry.addData("Shooter speed1", ((DcMotorEx)flywheel1).getVelocity());
     telemetry.addData("Shooter speed2", ((DcMotorEx)flywheel2).getVelocity());
+    boolean flywheelReady = ((DcMotorEx)flywheel2).getVelocity() >= 1170 && ((DcMotorEx)flywheel2).getVelocity() <= 1230;
+    telemetry.addData("Flywheel Ready", flywheelReady ? "YES" : "NO");
     telemetry.addData("Detected Color", detectedColor);
     telemetry.addData("Ball Distance", "%.1f cm", ballDistance);
     
